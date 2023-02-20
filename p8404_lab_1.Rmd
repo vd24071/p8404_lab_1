@@ -1,0 +1,130 @@
+---
+title: "Lab 1"
+author: "Vanessa Dinh"
+output: html_document
+---
+
+# Intro to Genetic Data Analysis
+
+```{r}
+#load libraries
+library(tidyverse)
+library(SKAT)
+```
+
+```{r}
+#load data
+Gene1 =
+  read.table("./data/Gene1.txt", quote="\"", comment.char="")
+
+Trait1 = 
+  read.table("./data/Trait1.txt", quote="\"", comment.char="")
+```
+
+```{r}
+#summarize Gene1 dataset
+ls(Gene1)
+dim(Gene1)
+Gene1[1:5,1:5]
+summary(Gene1[1:5,1:5])
+```
+
+```{r}
+#turn Gene1 into a matrix
+Z = as.matrix(Gene1)
+
+#calculate the mean of each column and divide by 2 to get the minor allele frequency
+# maf = apply(Z, 2, mean)/2
+
+maf = colMeans(Z)/2
+
+# plot histogram
+hist(maf)
+
+# Zoom into histogram to focus on values less than 0.05
+hist(maf[which(maf<0.05)])
+```
+
+First histogram shows most MAF is less than 0.1, which makes sense as we are analyzing rare variants.
+
+Second histogram shows most MAF is less than 0.005.
+
+```{r}
+# read in values for trait 1 (phenotype)
+y.c = scan("./data/Trait1.txt")
+
+# create empty object
+pvs = rep(NA, ncol(Z))
+
+# fill in test for association between y.c and each SNP
+for (j in seq(ncol(Z))) {
+  pvs[j] = summary(lm(y.c~Z[,j]))$coef[2,4]
+}
+
+
+#adjust p-values for multiple testing
+p.adjust(pvs, "bonf")
+
+view(pvs)
+
+```
+
+Conclusion: No SNPs are associated with phenotype y.c.
+
+```{r}
+# set threshold to be 0.03
+rvs = which(maf<0.03)
+```
+
+## CAST: Binary collapsing (Burden Test)
+
+```{r}
+# figures out if each person has any rare variants
+# i.e. the sum of their variants in additive mode would be greater than 0
+
+C = as.numeric(apply(Z[,rvs], 1, sum)>0)
+
+# run linear regression model
+summary(lm(y.c~C))
+```
+
+By collapsing 50 SNPs together that individually is not associated with our trait, we can see a statistically significant result when combined.
+
+Interpretation: Maybe each gene has a weak effect on phenotype, but the whole gene has multiple SNPs. By looking at whole gene, might be able to see a stronger effect.
+
+## MZ Test
+
+```{r}
+
+```
+
+## Weights
+
+```{r}
+maf = apply(Z, 2, mean)/2
+
+weights = 1/maf[rvs]
+
+plot(maf[rvs], weights)
+```
+On X-axis is minor allele frequency, y-axis is weights. The more rare the variant, the higher the weight.
+
+## SKAT: Sequence kernel association test, nonburden test
+
+```{r}
+# calculates the null model, no variants
+# C = continuous, D = dummy
+obj =
+  SKAT_Null_Model(y.c~1, out_type = "C")
+
+#test for trait 1 with gene 1. Testing all variants
+SKAT(Z, obj)$p.value
+
+#restrict attention to rare variants, null model has not changed
+SKAT(Z[,rvs], obj)$p.value
+
+#different approach to SKAT "optimal"
+SKAT(Z[,rvs], obj, method = "optimal")$p.value
+```
+
+Same SKAT test can produce very different results.
